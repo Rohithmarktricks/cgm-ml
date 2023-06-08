@@ -7,18 +7,16 @@ from pathlib import Path
 import pickle
 from PIL import Image
 import numpy as np
-from pathlib import Path
-import pickle
-from PIL import Image
-import numpy as np
+import pandas as pd
 
 from azure.storage.blob import BlobServiceClient
-from cgmml.common.data_utilities.rgbd_matching import *
+from cgmml.common.data_utilities.rgbd_matching import match_df_with_depth_and_image_artifacts
+
 
 class SparkFunctions:
     """This is here because it is not very simple to execute spark jobs from another file"""
-    @staticmethod    
-    def process_rgb(artifact_dict, input_dir : str, output_dir : str) -> str:
+    @staticmethod
+    def process_rgb(artifact_dict, input_dir: str, output_dir: str) -> str:
         """
         Process RGB data, save it as a pickle file, and return the file path.
 
@@ -45,7 +43,7 @@ class SparkFunctions:
         person_id = artifact_dict['person_id']
         pickle_output_path = f"scans/{person_id}/{scan_step}/pc_{scan_id}_{timestamp}_{scan_step}_{order_number}.p"
         target_dict = {**artifact_dict}
-        
+
         # Write into pickle
         pickle_output_full_path = f"{output_dir}/{pickle_output_path}"
         Path(pickle_output_full_path).parent.mkdir(parents=True, exist_ok=True)
@@ -53,17 +51,19 @@ class SparkFunctions:
 
         return pickle_output_full_path
 
+
 def main(db_host: str, db_user: str, db_pw: str, blob_conn_str: str, exec_path: str, logger, args):
-    num_artifacts : int = args.num_artifacts if args.num_artifacts else -1
+    num_artifacts: int = args.num_artifacts if args.num_artifacts else -1
     dataset_type = args.dataset_type
 
-    logger.write(f"Beginning main execution. Data Category: {args.data_category}, Dataset Type: {dataset_type}, Number of Artifacts: {num_artifacts}")
+    logger.write(f"""Beginning main execution. Data Category: {args.data_category}, Dataset Type: {dataset_type}, \
+        Number of Artifacts: {num_artifacts}""")
 
     # get scans from db and create dataframe
     database_repo = DatabaseRepo(db_host, db_user, db_pw)
     query_results, column_names = database_repo.get_scans(args.data_category, dataset_type, None, num_artifacts)
     logger.write("Retrieved {len(query_results)} scans from the database.")
-    
+
     scans_df = PandaFactory.create_scans_data_frame(query_results, column_names, logger)
     logger.write("Created dataframe from scans, dataframe size: {len(scans_df)}")
 
@@ -71,19 +71,20 @@ def main(db_host: str, db_user: str, db_pw: str, blob_conn_str: str, exec_path: 
     logger.write("Set zscore")
     dataframe['zscore'] = dataframe.apply(PandaFactory.calculate_zscore, axis=1)
     logger.write("Set diagnosis")
-    dataframe['diagnosis'] = dataframe.apply(PandaFactory.get_diagnosis,axis=1)
+    dataframe['diagnosis'] = dataframe.apply(PandaFactory.get_diagnosis, axis=1)
     logger.write("Set lhfa")
-    dataframe['lhfa'] = dataframe.apply(PandaFactory.calculate_lhfa_zscore,axis =1)
+    dataframe['lhfa'] = dataframe.apply(PandaFactory.calculate_lhfa_zscore, axis=1)
     logger.write("Set diagnosis lhfa")
-    dataframe['diagnosis_lhfa'] = dataframe.apply(PandaFactory.diagnosis_on_lhfa,axis=1)
-    dataframe.rename(columns = {'diagnosis':'diagnosis_wfh','zscore':'zscore_wfh','lhfa':'zscore_lhfa'}, inplace = True)
+    dataframe['diagnosis_lhfa'] = dataframe.apply(PandaFactory.diagnosis_on_lhfa, axis=1)
+    dataframe.rename(columns={'diagnosis': 'diagnosis_wfh', 'zscore': 'zscore_wfh', 'lhfa': 'zscore_lhfa'},
+                     inplace=True)
     logger.write("....Done.")
     df_to_process = dataframe
 
     logger.write("Get 'no of person' data and merge it into df_to_process.")
     pose_number_data, column_names_number_pose = database_repo.get_number_persons_pose(args.workflow_id_pose, None)
     df_no_of_person = PandaFactory.create_number_persons_data_frame(pose_number_data, column_names_number_pose)
-    df_no_of_person= df_no_of_person.drop_duplicates(subset='artifact_id', keep='last')
+    df_no_of_person = df_no_of_person.drop_duplicates(subset='artifact_id', keep='last')
     logger.write("Merging number of person data into main dataframe")
     # Merge the two DataFrames on the 'artifact_id' column
     df_to_process = df_to_process.merge(df_no_of_person, on='artifact_id', suffixes=('', '_temp'))
@@ -96,8 +97,9 @@ def main(db_host: str, db_user: str, db_pw: str, blob_conn_str: str, exec_path: 
     logger.write(f"got {len(pose_results)} Pose Results")
     df_pose_results = PandaFactory.create_pose_data_frame(pose_results, column_names_pose)
     logger.write("Pose Data Frame Created.")
-    df_pose_results= df_pose_results.drop_duplicates(subset='artifact_id', keep='last')
-    logger.write(f"Found {len(df_pose_results)} pose result entries, columns: {df_pose_results.columns}, df_proc entries: {len(df_to_process)}")
+    df_pose_results = df_pose_results.drop_duplicates(subset='artifact_id', keep='last')
+    logger.write(f"""Found {len(df_pose_results)} pose result entries, columns: {df_pose_results.columns},
+                  df_proc entries: {len(df_to_process)}""")
     # Merge the two DataFrames on the 'artifact_id' column
     df_to_process = df_to_process.merge(df_pose_results, on='artifact_id', suffixes=('', '_temp'))
     # Drop the temporary 'scan_id' column from the merged DataFrame
@@ -106,10 +108,9 @@ def main(db_host: str, db_user: str, db_pw: str, blob_conn_str: str, exec_path: 
 
     logger.write("Finalize df PreProcessing.")
 
-   
     if dataset_type == 'rgbd':
-         #Match depthmap and rgb to rgbd
-        #it is necessary to remove certain rows first before rows are fused
+        # Match depthmap and rgb to rgbd
+        # it is necessary to remove certain rows first before rows are fused
         df_to_process = PandaFactory.filter_rgbd_data(df_to_process)
 
         df_to_process = df_to_process.drop('artifact', axis=1)
@@ -119,17 +120,17 @@ def main(db_host: str, db_user: str, db_pw: str, blob_conn_str: str, exec_path: 
         fused_artifacts_dicts = match_df_with_depth_and_image_artifacts(df_to_process)
         df_to_process = pd.DataFrame(fused_artifacts_dicts)
 
-    ### download blobs
+    # download blobs
     path_to_images = f"{exec_path}scans/"
     BLOB_SERVICE_CLIENT = BlobServiceClient.from_connection_string(blob_conn_str)
-    ## Gather file_paths, Remove duplicates
+    # Gather file_paths, Remove duplicates
     _file_paths = list(set(df_to_process['file_path'].tolist()))
     # Check if 'file_path_rgb' column exists
     if 'file_path_rgb' in df_to_process.columns:
         # Append 'file_path_rgb' values to _file_paths
         _file_paths.extend(df_to_process['file_path_rgb'].tolist())
         # Remove duplicates
-        _file_paths = list(set(_file_paths))    
+        _file_paths = list(set(_file_paths))
     logger.write(f"Preparing to download {len(_file_paths)} files.")
     CONTAINER_NAME_SRC_SA = "cgm-result"
     pool = ThreadPool(64)
@@ -151,28 +152,33 @@ def main(db_host: str, db_user: str, db_pw: str, blob_conn_str: str, exec_path: 
             raise Exception(f"{path_to_images}{file} does not exist")
     logger.write("All files exist")
 
-    ### Convert Dataframe to list of query_result_dicts
+    # Convert Dataframe to list of query_result_dicts
     logger.write("Start creating Pickle Files.")
     query_results_dicts = df_to_process.to_dict('records')
 
-    ### Process
-    #spark works well for DataBricks Clusters, alternatively you can use normal Multi Threading
+    # Process
+    # spark works well for DataBricks Clusters, alternatively you can use normal Multi Threading
     use_spark = True
     if use_spark:
         # Processing all artifacts at once
-        rdd = spark.sparkContext.parallelize(query_results_dicts,48)
+        rdd = spark.sparkContext.parallelize(query_results_dicts, 48)
         if dataset_type == 'rgb':
-            rdd_processed = rdd.map(lambda query_result_dict: (query_result_dict, SparkFunctions.process_rgb(query_result_dict, path_to_images, exec_path)))
+            rdd_processed = rdd.map(lambda query_result_dict:
+                                    (query_result_dict,
+                                     SparkFunctions.process_rgb(query_result_dict, path_to_images, exec_path)))
         else:
-            artifact_processor = ArtifactProcessor(path_to_images, exec_path, dataset_type=dataset_type, should_rotate_rgb=True)
-            rdd_processed = rdd.map(lambda query_result_dict: (query_result_dict, artifact_processor.create_and_save_pickle(query_result_dict)))
-        processed_dicts_and_fnames = rdd_processed.collect()  
+            artifact_processor = ArtifactProcessor(path_to_images, exec_path,
+                                                   dataset_type=dataset_type, should_rotate_rgb=True)
+            rdd_processed = rdd.map(lambda query_result_dict:
+                                    (query_result_dict, artifact_processor.create_and_save_pickle(query_result_dict)))
+        processed_dicts_and_fnames = rdd_processed.collect()
     else:
         def process_artifact(artifact_dict: dict):
             if dataset_type == 'rgb':
                 return (artifact_dict, SparkFunctions.process_rgb(artifact_dict, path_to_images, exec_path))
             else:
-                artifact_processor = ArtifactProcessor(path_to_images, exec_path, dataset_type=dataset_type, should_rotate_rgb=True)
+                artifact_processor = ArtifactProcessor(path_to_images, exec_path,
+                                                       dataset_type=dataset_type, should_rotate_rgb=True)
                 return (artifact_dict, artifact_processor.create_and_save_pickle(artifact_dict))
         # Set the number of parallel workers
         num_workers = 32
@@ -192,9 +198,10 @@ def main(db_host: str, db_user: str, db_pw: str, blob_conn_str: str, exec_path: 
     logger.write(f"Successfully pickled samples: {len(processed_fnames_with_success)}")
 
     # not really happy with this, but its a simple solution that works
-    if(str(args.upload_to_blob_storage).lower() == "true"):
+    if (str(args.upload_to_blob_storage).lower() == "true"):
         logger.write("Upload Blobs")
-        BlobRepo.upload_to_blob_storage(args.upload_blob_conn_str, processed_dicts_with_success, args.dataset_type, args.data_category)
+        BlobRepo.upload_to_blob_storage(args.upload_blob_conn_str, processed_dicts_with_success,
+                                        args.dataset_type, args.data_category)
         logger.write("Upload Blobs Finished")
 
     logger.write("Main execution finished.")
@@ -208,20 +215,26 @@ if __name__ == '__main__':
             return None
         return int(val)
 
-    parser = argparse.ArgumentParser(description='Create a ArcHydro schema')    
-    parser.add_argument('--blob_conn_str', metavar='blob_conn_str', required=True, help='connection string for blob storage')
+    parser = argparse.ArgumentParser(description='Create a ArcHydro schema')
+    parser.add_argument('--blob_conn_str', metavar='blob_conn_str', required=True,
+                        help='connection string for blob storage')
     parser.add_argument('--data_category', metavar='data_category', required=True, help='Can be Train or Test')
-    parser.add_argument('--dataset_type', default='Train', metavar='dataset_type', required=True, help='Kind of Preprocessing: rgb, depth, rgbd')
+    parser.add_argument('--dataset_type', default='Train', metavar='dataset_type',
+                        required=True, help='Kind of Preprocessing: rgb, depth, rgbd')
     parser.add_argument('--db_host', metavar='db_host', required=True, help='address of db')
     parser.add_argument('--db_user', metavar='db_user', required=True, help='address of db')
     parser.add_argument('--db_pw', metavar='db_pw', required=True, help='address of db')
     parser.add_argument('--exec_path', metavar='exec_path', required=True, help='path from where to exec python script')
     parser.add_argument('--path_to_log', metavar='path_to_log', required=True, help='the path to workspace')
-    parser.add_argument('--upload_to_blob_storage', metavar='upload_to_blob_storage', required=True, help='Upload to a blob storage afterwards, yes or no.')
-    parser.add_argument('--upload_blob_conn_str', metavar='upload_blob_conn_str', required=True, help='connection string for blob storage upload')
-    parser.add_argument('--workflow_id_pose', metavar='workflow_id_pose', required=True, help='Workflow Id used in Standing SQL Query')
-    #optional params 
-    parser.add_argument('--num_artifacts', metavar='num_artifacts', required=False, type=int_or_none, help='Maximum Number of entries taken from database')
+    parser.add_argument('--upload_to_blob_storage', metavar='upload_to_blob_storage', required=True,
+                        help='Upload to a blob storage afterwards, yes or no.')
+    parser.add_argument('--upload_blob_conn_str', metavar='upload_blob_conn_str', required=True,
+                        help='connection string for blob storage upload')
+    parser.add_argument('--workflow_id_pose', metavar='workflow_id_pose', required=True,
+                        help='Workflow Id used in Standing SQL Query')
+    # optional params
+    parser.add_argument('--num_artifacts', metavar='num_artifacts', required=False, type=int_or_none,
+                        help='Maximum Number of entries taken from database')
     args = parser.parse_args()
 
     # Add the following line after parsing the arguments:
@@ -233,11 +246,10 @@ if __name__ == '__main__':
     from cgmml.common.data_utilities.mlpipeline_utils import ArtifactProcessor
 
     logger = LoggerPipe(args.path_to_log)
-    
+
     try:
         main(args.db_host, args.db_user, args.db_pw, args.blob_conn_str, args.exec_path, logger, args)
     except Exception as e:
         stack_trace = traceback.format_exc()
         logger.write(f"Execution of Script failed: {e}\nStack trace:\n{stack_trace}")
         raise e
-

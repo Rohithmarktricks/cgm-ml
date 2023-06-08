@@ -22,7 +22,7 @@ class PandaFactory:
             pd.DataFrame: A DataFrame containing the pose data.
         """
         return pd.DataFrame(query_results_tmp_pose, columns=list(map(lambda x: x.name, column_names)))
-    
+
     @staticmethod
     def create_number_persons_data_frame(query_results, column_names) -> pd.DataFrame:
         """
@@ -40,7 +40,8 @@ class PandaFactory:
         """
         df_no_of_person = pd.DataFrame(query_results, columns=list(map(lambda x: x.name, column_names)))
         return df_no_of_person
-    
+
+    @staticmethod
     def calculate_lhfa_zscore(rows: pd.DataFrame):
         """
         Calculate the length/height-for-age (LHFA) z-score for each row in the DataFrame.
@@ -78,7 +79,7 @@ class PandaFactory:
         return score
 
     @staticmethod
-    def create_scans_data_frame(query_results, column_names : 'list[str]', logger : LoggerPipe) -> pd.DataFrame:
+    def create_scans_data_frame(query_results, column_names: 'list[str]', logger: LoggerPipe) -> pd.DataFrame:
         """
         Create a DataFrame of scans data and filter it based on specific conditions.
 
@@ -94,21 +95,22 @@ class PandaFactory:
         df : pd.DataFrame
             Filtered DataFrame containing scans data.
         """
-        df = pd.DataFrame(query_results, columns=column_names)
-        
-        # Clean timestamp and convert to a formatted string
-        df['timestamp'] = df['timestamp'].astype(str).apply(lambda ts: ts.replace(' ', '-').replace(':', '-').replace('.', '-'))
+        dataframe = pd.DataFrame(query_results, columns=column_names)
 
-        logger.write(f"Total number of unique scans in fetched: {len(pd.unique(df['scan_id']))})")
+        # Clean timestamp and convert to a formatted string
+        dataframe['timestamp'] = dataframe['timestamp'].astype(str) \
+            .apply(lambda ts: ts.replace(' ', '-').replace(':', '-').replace('.', '-'))
+
+        logger.write(f"Total number of unique scans in fetched: {len(pd.unique(dataframe['scan_id']))})")
 
         # Insert fake manual measurements if they are not present
         for col, default_value in [('muac', 10), ('weight', 30), ('height', 90)]:
-            if col not in df.columns:
-                df.insert(4, col, default_value)
+            if col not in dataframe.columns:
+                dataframe.insert(4, col, default_value)
 
-        logger.write(f"Shape with duplicates: {df.shape}")
-        df = df.drop_duplicates(subset=['scan_id', 'scan_step', 'timestamp', 'order_number'])
-        logger.write(f"Shape without duplicates: {df.shape}")
+        logger.write(f"Shape with duplicates: {dataframe.shape}")
+        dataframe = dataframe.drop_duplicates(subset=['scan_id', 'scan_step', 'timestamp', 'order_number'])
+        logger.write(f"Shape without duplicates: {dataframe.shape}")
 
         def print_unique_counts(df, title):
             logger.write(title)
@@ -117,12 +119,12 @@ class PandaFactory:
             logger.write(f"Unique artifacts: {len(df.file_path.unique())}")
 
         # Print unique counts before and after filtering by age
-        print_unique_counts(df, "Before filtering by age:")
-        df = df.loc[(df['age'] >= 365 / 2) & (df['age'] <= 365 * 5)]
-        print_unique_counts(df, "After filtering by age:")
+        print_unique_counts(dataframe, "Before filtering by age:")
+        dataframe = dataframe.loc[(dataframe['age'] >= 365 / 2) & (dataframe['age'] <= 365 * 5)]
+        print_unique_counts(dataframe, "After filtering by age:")
 
-        return df
-    
+        return dataframe
+
     @staticmethod
     def create_standing_data_frame(query_results_tmp_standing, column_names) -> pd.DataFrame:
         """
@@ -171,26 +173,30 @@ class PandaFactory:
             class_lhfa = 'Not Stunted'
 
         return class_lhfa
-    
+
     @staticmethod
     def filter_rgbd_data(rows: pd.DataFrame):
         """
-        Filters rows in a DataFrame based on the equality of 'pose_score' and 'pose_result' between two formats: 'depth' and 'rgb'.
+        This function filters the input DataFrame 'rows' based on the consistency of 'pose_score' and 'pose_result'
+        between two formats: 'depth' and 'rgb'.
 
-        The function first splits the provided DataFrame into two separate DataFrames based on the 'format' column.
-        Then it iterates over each row in the 'depth' DataFrame, finds the matching row in the 'rgb' DataFrame (by 'scan_id' and 'order_number'), 
-        and checks if the 'pose_score' and 'pose_result' are the same in both rows. 
-        If they are not the same, the row indices are added to a list of invalid rows.
-        
-        After iterating over all the rows, the function drops the invalid rows from both DataFrames.
-        
-        Finally, it concatenates the remaining valid rows from both DataFrames into a single DataFrame and returns it.
+        First, it divides the input DataFrame into two DataFrames based on the 'format' column.
+
+        It then traverses each row in the 'depth' DataFrame, identifies the corresponding row in the 'rgb' DataFrame
+        (by 'scan_id' and 'order_number'), and verifies if 'pose_score' and 'pose_result' match in both rows.
+
+        If they don't match, the indices of these rows are accumulated into a list of invalid rows.
+
+        Post iteration, these invalid rows are discarded from both DataFrames.
+
+        Lastly, it merges the remaining valid rows from both 'depth' and 'rgb' formats into one DataFrame and
+        returns it.
 
         Parameters:
-        rows (pd.DataFrame): The input DataFrame to be filtered.
+        rows (pd.DataFrame): The DataFrame to be processed.
 
         Returns:
-        return_value (pd.DataFrame): The filtered DataFrame containing only valid rows from both 'depth' and 'rgb' formats.
+        return_value (pd.DataFrame): The output DataFrame consisting of valid rows from both formats.
         """
 
         df_depth = rows[rows['format'] == 'depth']
@@ -200,17 +206,18 @@ class PandaFactory:
         for i in df_depth.index:
             scan_id = df_depth.loc[i, 'scan_id']
             order_number = df_depth.loc[i, 'order_number']
-            
+
             # Find matching row in df_rgb
             matching_rows = df_rgb[(df_rgb['scan_id'] == scan_id) & (df_rgb['order_number'] == order_number)]
-            
+
             if matching_rows.empty:
                 # If no matching row, continue to next iteration
                 continue
-            
+
             for j in matching_rows.index:
                 # If 'pose_score' and 'pose_result' don't match, mark as invalid
-                if (df_depth.loc[i, 'pose_score'] != df_rgb.loc[j, 'pose_score']) or (df_depth.loc[i, 'pose_result'] != df_rgb.loc[j, 'pose_result']):
+                if (df_depth.loc[i, 'pose_score'] != df_rgb.loc[j, 'pose_score']) or \
+                      (df_depth.loc[i, 'pose_result'] != df_rgb.loc[j, 'pose_result']):
                     print(f"drop artifact id {df_depth.loc[i, 'artifact_id']} and {df_rgb.loc[j, 'artifact_id']}")
                     invalid_rows_depth.append(i)
                     invalid_rows_rgb.append(j)
@@ -221,8 +228,6 @@ class PandaFactory:
         return_value = pd.concat([df_depth, df_rgb], ignore_index=True)
 
         return return_value
-
-
 
     @staticmethod
     def get_diagnosis(rows: pd.DataFrame):
@@ -245,4 +250,3 @@ class PandaFactory:
             diagnosis = "Healthy"
 
         return diagnosis
-    

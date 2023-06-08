@@ -1,5 +1,6 @@
 import logging
 
+
 class LoggerPipe:
     """Of this logger there can only be one instance (write mode)
     """
@@ -13,4 +14,3 @@ class LoggerPipe:
 
     def write(self, message: str):
         self.logger.info(message)
-

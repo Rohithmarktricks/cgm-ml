@@ -35,7 +35,7 @@ class BlobRepo:
         """
         This function uploads given files to an Azure Blob storage container.
 
-        The function uses a multi-threaded approach to upload the files concurrently, which 
+        The function uses a multi-threaded approach to upload the files concurrently, which
         can significantly improve the upload speed for large datasets. The data is organized
         in the Blob storage based on its type and category and is stored under a unique directory
         name that is derived from the current timestamp.
@@ -53,13 +53,15 @@ class BlobRepo:
         CONTAINER_NAME_DEST_SA = "cgm-datasets"
         BLOB_SERVICE_CLIENT_DSET = BlobServiceClient.from_connection_string(connection_str_des)
         DATASET_NAME = "dataset"
-        dest_dir = datetime.now(datetime.timezone.utc).strftime(f"{DATASET_NAME}-{dataset_type}-{data_category}-%Y-%m-%d-%H-%M-%S")
-        PREFIX = f"/dbfs/tmp/env_prod/"
+        dest_dir = datetime.now(datetime.timezone.utc) \
+            .strftime(f"{DATASET_NAME}-{dataset_type}-{data_category}-%Y-%m-%d-%H-%M-%S")
+        PREFIX = "/dbfs/tmp/env_prod/"
 
         def remove_prefix(text: str, prefix: str) -> str:
-            if text.startswith(prefix): return text[len(prefix):]
+            if text.startswith(prefix):
+                return text[len(prefix):]
             return text
-        
+
         def upload_to_blob_storage_intern(src: str, dest_container: str, dest_fpath: str):
             blob_client = BLOB_SERVICE_CLIENT_DSET.get_blob_client(container=dest_container, blob=dest_fpath)
             with open(src, "rb") as data:

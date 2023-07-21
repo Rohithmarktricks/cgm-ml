@@ -32,6 +32,7 @@ cd datasets
 cd realtime_evaluation  # for example
 ```
 
+### Accessing datasets. 
 In order to mount a single dataset with python code, run:
 
 ```python
@@ -41,6 +42,57 @@ dataset_name = "anon-depthmap-95k"
 dataset = workspace.datasets[dataset_name]
 inputs = [dataset.as_named_input("dataset").as_mount("/mnt/dataset")]
 ```
+
+- 1. Assign the dataset name to a variable.
+```
+DATASET_NAME = "DATASET NAME"
+```
+- 2. Use the following code to set up the subscription_id and get the dataset.
+```
+# azureml-core of version 1.0.72 or higher is required
+from azureml.core import Workspace, Dataset
+
+# point to the creds to access the Workspace.
+subscription_id = ''
+resource_group = ''
+workspace_name = ''
+
+# load the workspace
+workspace = Workspace(subscription_id, resource_group, workspace_name)
+
+# get the dataset
+dataset = Dataset.get_by_name(workspace, name=DATASET_NAME)
+
+```
+
+- 3. Mount the datset in Jupyter Notebook
+```
+# Connect to Workspace and reference Dataset
+ws = Workspace.from_config()
+dataset = ws.datasets[DATASET_NAME]
+
+# Create mountcontext and mount the dataset
+mount_ctx = dataset.mount()  
+mount_ctx.start() 
+```
+
+- 4. Get the mount point and list the files.
+```
+# Get the mount point
+dataset_mount_folder = mount_ctx.mount_point
+print(dataset_mount_folder)
+
+# List the files in the mount point
+files = os.listdir(dataset_mount_folder)
+print(files)
+```
+
+- 5. Load the ```labels.csv``` for the analysis.
+```
+df = pd.read_csv(os.path.join(dataset_mount_folder, 'labels.csv'))
+df.shape
+```
+
 
 ### anon-depthmaps-56k
 

@@ -217,7 +217,7 @@ class PandaFactory:
             for j in matching_rows.index:
                 # If 'pose_score' and 'pose_result' don't match, mark as invalid
                 if (df_depth.loc[i, 'pose_score'] != df_rgb.loc[j, 'pose_score']) or \
-                      (df_depth.loc[i, 'pose_result'] != df_rgb.loc[j, 'pose_result']):
+                        (df_depth.loc[i, 'pose_result'] != df_rgb.loc[j, 'pose_result']):
                     print(f"drop artifact id {df_depth.loc[i, 'artifact_id']} and {df_rgb.loc[j, 'artifact_id']}")
                     invalid_rows_depth.append(i)
                     invalid_rows_rgb.append(j)

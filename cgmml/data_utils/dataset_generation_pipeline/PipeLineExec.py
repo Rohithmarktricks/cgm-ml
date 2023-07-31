@@ -122,7 +122,7 @@ def main(db_host: str, db_user: str, db_pw: str, blob_conn_str: str, exec_path: 
 
     # download blobs
     path_to_images = f"{exec_path}scans/"
-    BLOB_SERVICE_CLIENT = BlobServiceClient.from_connection_string(blob_conn_str)
+    blob_service_client = BlobServiceClient.from_connection_string(blob_conn_str)
     # Gather file_paths, Remove duplicates
     _file_paths = list(set(df_to_process['file_path'].tolist()))
     # Check if 'file_path_rgb' column exists
@@ -132,14 +132,14 @@ def main(db_host: str, db_user: str, db_pw: str, blob_conn_str: str, exec_path: 
         # Remove duplicates
         _file_paths = list(set(_file_paths))
     logger.write(f"Preparing to download {len(_file_paths)} files.")
-    CONTAINER_NAME_SRC_SA = "cgm-result"
+    container_name_src_sa = "cgm-result"
     pool = ThreadPool(64)
     _ = pool.map(
         lambda full_name: BlobRepo.download_from_blob_storage(
             src=full_name,
             dest=f"{path_to_images}{full_name}",
-            container=CONTAINER_NAME_SRC_SA,
-            blob_client=BLOB_SERVICE_CLIENT
+            container=container_name_src_sa,
+            blob_client=blob_service_client
         ),
         _file_paths
     )
@@ -161,7 +161,7 @@ def main(db_host: str, db_user: str, db_pw: str, blob_conn_str: str, exec_path: 
     use_spark = True
     if use_spark:
         # Processing all artifacts at once
-        rdd = spark.sparkContext.parallelize(query_results_dicts, 48)
+        rdd = spark.sparkContext.parallelize(query_results_dicts, 48)  # noqa: F821
         if dataset_type == 'rgb':
             rdd_processed = rdd.map(lambda query_result_dict:
                                     (query_result_dict,

@@ -43,13 +43,13 @@ class DatabaseRepo:
             query results and column names.
         """
         limit_string = f"LIMIT {num_artifacts}" if num_artifacts is not None else ""
-        SQL_QUERY_BASE_POSE = f"""select ar.artifact_id, r.data->>'no of person using pose'
+        sql_query_base_pose = f"""select ar.artifact_id, r.data->>'no of person using pose'
          as no_of_person, r.scan_id from artifact_result ar
         join "result" r on r.id = ar.result_id and r.result_workflow_id = '{workflow_id}' and r.data ?
          'no of person using pose'
         {limit_string}"""
 
-        self.__sql_cursor.execute(SQL_QUERY_BASE_POSE)
+        self.__sql_cursor.execute(sql_query_base_pose)
         query_results_tmp_pose: List[Tuple[str]] = self.__sql_cursor.fetchall()
 
         return query_results_tmp_pose, self.__sql_cursor.description
@@ -75,7 +75,7 @@ class DatabaseRepo:
                   of the query result.
         """
         limit_string = f"LIMIT {num_artifacts}" if num_artifacts is not None else ""
-        SQL_QUERY_BASE_POSE = f""" select ar.artifact_id, r.data->>'Pose Scores'
+        sql_query_base_pose = f""" select ar.artifact_id, r.data->>'Pose Scores'
           as pose_score, r.data->>'Pose Results' as pose_result,
           r.scan_id, a.ord, a.format from artifact_result ar
          INNER JOIN "result" r on r.id = ar.result_id
@@ -83,7 +83,7 @@ class DatabaseRepo:
          and r.result_workflow_id = '{workflow_id}' and r.data ? 'Pose Scores' and r.data ? 'Pose Results'
         {limit_string}"""
 
-        self.__sql_cursor.execute(SQL_QUERY_BASE_POSE)
+        self.__sql_cursor.execute(sql_query_base_pose)
         query_results_tmp_pose: List[Tuple[str]] = self.__sql_cursor.fetchall()
         column_names: Tuple[psycopg2.extensions.Column] = self.__sql_cursor.description
 
@@ -104,7 +104,7 @@ class DatabaseRepo:
         """
         person_id_string = f"AND p.id = '{person_id}'" if person_id is not None else ""
         limit_string = f"LIMIT {num_artifacts}" if num_artifacts > -1 else ""
-        SQL_QUERY_BASE = f"""
+        sql_query_base = f"""
         SELECT f.file_path, f.created as timestamp,
             s.id as scan_id, s.scan_type_id as scan_step, s.version as scan_version,
             m.height, m.weight, m.muac,
@@ -127,18 +127,18 @@ class DatabaseRepo:
         """
 
         if dataset_type == 'depthmap':
-            SQL_QUERY = f"""{SQL_QUERY_BASE}
+            sql_query = f"""{sql_query_base}
             AND a.format IN ('depth', 'application/zip') {limit_string};"""
         elif dataset_type == 'rgbd':
-            SQL_QUERY = f"""{SQL_QUERY_BASE}
+            sql_query = f"""{sql_query_base}
             AND a.ord IS NOT NULL {limit_string};"""
         elif dataset_type == 'rgb':
-            SQL_QUERY = f"""{SQL_QUERY_BASE}
+            sql_query = f"""{sql_query_base}
             AND a.format IN('rgb') {limit_string};"""
         else:
             raise NameError(f'Unknown dataset type: {dataset_type}')
 
-        self.__sql_cursor.execute(SQL_QUERY)
+        self.__sql_cursor.execute(sql_query)
 
         # Get multiple query_result rows
         query_results: List[Tuple[str]] = self.__sql_cursor.fetchall()

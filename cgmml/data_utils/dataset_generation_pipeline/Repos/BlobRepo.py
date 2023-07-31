@@ -50,12 +50,12 @@ class BlobRepo:
         list: A list of results from ThreadPool's map function which contains None for successful uploads.
             Any exceptions raised during the upload will be present in this list.
         """
-        CONTAINER_NAME_DEST_SA = "cgm-datasets"
-        BLOB_SERVICE_CLIENT_DSET = BlobServiceClient.from_connection_string(connection_str_des)
-        DATASET_NAME = "dataset"
+        container_name_dest_sa = "cgm-datasets"
+        blob_service_client_dset = BlobServiceClient.from_connection_string(connection_str_des)
+        dataset_name = "dataset"
         dest_dir = datetime.now(datetime.timezone.utc) \
-            .strftime(f"{DATASET_NAME}-{dataset_type}-{data_category}-%Y-%m-%d-%H-%M-%S")
-        PREFIX = "/dbfs/tmp/env_prod/"
+            .strftime(f"{dataset_name}-{dataset_type}-{data_category}-%Y-%m-%d-%H-%M-%S")
+        prefix = "/dbfs/tmp/env_prod/"
 
         def remove_prefix(text: str, prefix: str) -> str:
             if text.startswith(prefix):
@@ -63,17 +63,17 @@ class BlobRepo:
             return text
 
         def upload_to_blob_storage_intern(src: str, dest_container: str, dest_fpath: str):
-            blob_client = BLOB_SERVICE_CLIENT_DSET.get_blob_client(container=dest_container, blob=dest_fpath)
+            blob_client = blob_service_client_dset.get_blob_client(container=dest_container, blob=dest_fpath)
             with open(src, "rb") as data:
                 blob_client.upload_blob(data, overwrite=False)
 
         def _upload(full_name):
-            assert PREFIX in full_name, full_name
-            dest_fpath = os.path.join(dest_dir, remove_prefix(full_name, PREFIX))
-            upload_to_blob_storage_intern(src=full_name, dest_container=CONTAINER_NAME_DEST_SA, dest_fpath=dest_fpath)
+            assert prefix in full_name, full_name
+            dest_fpath = os.path.join(dest_dir, remove_prefix(full_name, prefix))
+            upload_to_blob_storage_intern(src=full_name, dest_container=container_name_dest_sa, dest_fpath=dest_fpath)
 
-        NUM_THREADS = 64
-        pool = ThreadPool(NUM_THREADS)
+        num_threads = 64
+        pool = ThreadPool(num_threads)
         results = pool.map(_upload, processed_fnames)
 
         return results
